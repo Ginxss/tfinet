@@ -1,0 +1,84 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558 
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        // compile
+        {
+            "label": "build server",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "linux": {
+                "command": "gcc",
+                "args": [
+                    "test/test_server.c",
+
+                    "-Wall",
+                    "-o", "test/linux/test.out"
+                ],
+                "problemMatcher": "$gcc"
+            },
+            "windows": {
+                "command": "cl",
+                "args": [
+                    "test/test_server.c",
+
+                    "/nologo", "/W3", "/Zi",
+                    "/Fo:test/", "/Fd:test/",
+
+                    "/link",
+                    "WS2_32.lib",
+                    "/out:test/server.exe"
+                ],
+                "problemMatcher": "$msCompile"
+            }
+        },
+        {
+            "label": "build client",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "linux": {
+                "command": "gcc",
+                "args": [
+                    "test/test_client.c",
+
+                    "-Wall",
+                    "-o", "test/linux/test.out"
+                ],
+                "problemMatcher": "$gcc"
+            },
+            "windows": {
+                "command": "cl",
+                "args": [
+                    "test/test_client.c",
+
+                    "/nologo", "/W3", "/Zi",
+                    "/Fo:test/", "/Fd:test/",
+
+                    "/link",
+                    "WS2_32.lib",
+                    "/out:test/client.exe"
+                ],
+                "problemMatcher": "$msCompile"
+            }
+        },
+
+        // run
+        {
+            "label": "run",
+            "type": "shell",
+            "linux": {
+                "command": "./test/test.out"
+            },
+            "windows": {
+                "command": ".\\test\\test.exe"
+            }
+        }
+    ]
+}
