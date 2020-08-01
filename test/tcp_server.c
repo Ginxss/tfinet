@@ -1,3 +1,4 @@
+#define TFI_WINSOCK
 #include "../tfinet.h"
 
 void connection_func(tfi_client *client) {
@@ -10,7 +11,12 @@ void connection_func(tfi_client *client) {
 }
 
 int main(int argc, char *argv[]) {
-	tfi_server *server = tfi_start_server(1234, "tcp", 1);
+	if (argc != 2) {
+		printf("Usage: %s port\n", argv[0]);
+		return 1;
+	}
+
+	tfi_server *server = tfi_start_server(atoi(argv[1]), "tcp", 1);
 	tfi_client *client = tfi_accept(server->socket);
 	tfi_client_thread *ct = tfi_start_client_thread(client, connection_func);
 

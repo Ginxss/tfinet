@@ -1,7 +1,13 @@
+#define TFI_WINSOCK
 #include "../tfinet.h"
 
 int main(int argc, char *argv[]) {
-    tfi_client *client = tfi_start_client("127.0.0.1", 1234, "tcp");
+    if (argc != 3) {
+		printf("Usage: %s host port\n", argv[0]);
+        return 1;
+	}
+
+    tfi_client *client = tfi_start_client(argv[1], atoi(argv[2]), "tcp");
 
     char buffer[9];
 	buffer[8] = 0;

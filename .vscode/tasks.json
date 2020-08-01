@@ -3,7 +3,6 @@
     // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
-        // compile
         {
             "label": "build server",
             "type": "shell",
@@ -14,7 +13,7 @@
             "linux": {
                 "command": "gcc",
                 "args": [
-                    "test/udp_server.c",
+                    "test/tcp_server.c",
 
                     "-Wall", "-lpthread",
                     "-o", "test/server.out"
@@ -46,7 +45,7 @@
             "linux": {
                 "command": "gcc",
                 "args": [
-                    "test/udp_client.c",
+                    "test/tcp_client.c",
 
                     "-Wall", "-lpthread",
                     "-o", "test/client.out"
@@ -66,18 +65,6 @@
                     "/out:test/client.exe"
                 ],
                 "problemMatcher": "$msCompile"
-            }
-        },
-
-        // run
-        {
-            "label": "run",
-            "type": "shell",
-            "linux": {
-                "command": "./test/test.out"
-            },
-            "windows": {
-                "command": ".\\test\\test.exe"
             }
         }
     ]
