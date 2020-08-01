@@ -1,16 +1,16 @@
 #include "../tfinet.h"
 
 void connection_func(tfi_client *client) {
-	send(client->socket.s, "Welcome!", 8, 0);
+	tfi_send_all(client->socket, "Welcome!", 8);
 	
 	char buffer[8];
 	buffer[7] = 0;
-	recv(client->socket.s, buffer, 7, MSG_WAITALL);
+	tfi_recv_all(client->socket, buffer, 7);
 	printf("Received: %s\n", buffer);
 }
 
 int main(int argc, char *argv[]) {
-	tfi_server *server = tfi_start_server(1234, 10);
+	tfi_server *server = tfi_start_server(1234, "tcp", 1);
 	tfi_client *client = tfi_accept(server->socket);
 	tfi_client_thread *ct = tfi_start_client_thread(client, connection_func);
 

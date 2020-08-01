@@ -14,7 +14,7 @@
             "linux": {
                 "command": "gcc",
                 "args": [
-                    "test/test_server.c",
+                    "test/udp_server.c",
 
                     "-Wall",
                     "-o", "test/linux/test.out"
@@ -24,7 +24,7 @@
             "windows": {
                 "command": "cl",
                 "args": [
-                    "test/test_server.c",
+                    "test/tcp_server.c",
 
                     "/nologo", "/W3", "/Zi",
                     "/Fo:test/", "/Fd:test/",
@@ -46,7 +46,7 @@
             "linux": {
                 "command": "gcc",
                 "args": [
-                    "test/test_client.c",
+                    "test/udp_client.c",
 
                     "-Wall",
                     "-o", "test/linux/test.out"
@@ -56,7 +56,7 @@
             "windows": {
                 "command": "cl",
                 "args": [
-                    "test/test_client.c",
+                    "test/tcp_client.c",
 
                     "/nologo", "/W3", "/Zi",
                     "/Fo:test/", "/Fd:test/",
