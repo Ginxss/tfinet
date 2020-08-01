@@ -16,8 +16,8 @@
                 "args": [
                     "test/udp_server.c",
 
-                    "-Wall",
-                    "-o", "test/linux/test.out"
+                    "-Wall", "-lpthread",
+                    "-o", "test/server.out"
                 ],
                 "problemMatcher": "$gcc"
             },
@@ -48,8 +48,8 @@
                 "args": [
                     "test/udp_client.c",
 
-                    "-Wall",
-                    "-o", "test/linux/test.out"
+                    "-Wall", "-lpthread",
+                    "-o", "test/client.out"
                 ],
                 "problemMatcher": "$gcc"
             },
