@@ -16,8 +16,8 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	tfi_server *server = tfi_start_server(atoi(argv[1]), "tcp", 1);
-	tfi_client *client = tfi_accept(server->socket);
+	tfi_server *server = tfi_start_server(atoi(argv[1]), TFI_TCP, 1);
+	tfi_client *client = tfi_accept(server);
 	tfi_client_thread *ct = tfi_start_client_thread(client, connection_func);
 
 	tfi_wait_for_client_thread(ct);
