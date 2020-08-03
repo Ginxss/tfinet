@@ -23,7 +23,7 @@
             "windows": {
                 "command": "cl",
                 "args": [
-                    "test/tcp_server.c",
+                    "test/udp_server.c",
 
                     "/nologo", "/W3", "/Zi",
                     "/Fo:test/", "/Fd:test/",
@@ -55,7 +55,7 @@
             "windows": {
                 "command": "cl",
                 "args": [
-                    "test/tcp_client.c",
+                    "test/udp_client.c",
 
                     "/nologo", "/W3", "/Zi",
                     "/Fo:test/", "/Fd:test/",

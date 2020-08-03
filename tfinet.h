@@ -5,322 +5,36 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum {
-    TFI_TCP, TFI_UDP
-} tfi_transport_protocol;
-
 #ifdef TFI_WINSOCK
-
-// *************** //
-// *** WINDOWS *** //
-// *************** //
-
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <Windows.h>
-
-typedef struct {
-	SOCKET s;
-} tfi_socket;
-
-typedef struct {
-    SOCKADDR_IN a;
-} tfi_address;
-
-typedef struct {
-    tfi_socket socket;
-    tfi_address address;
-} tfi_server, tfi_client;
-
-typedef struct {
-    HANDLE thread;
-	void (*function)(tfi_client *);
-	tfi_client *param;
-} tfi_client_thread;
-
-
-
-
-// *** SOCKETS *** //
-
-void tfi_close_server(tfi_server *tfi) {
-	closesocket(tfi->socket.s);
-	free(tfi);
-}
-
-// does not need to be called only if the client is handled in a thread
-void tfi_close_client(tfi_client *tfi) {
-	closesocket(tfi->socket.s);
-	free(tfi);
-}
-
-void tfi_cleanup() {
-    WSACleanup();
-}
-
-// protocol = TFI_TCP: after this call, you can call accept
-// protocol = TFI_UDP: after this call, you can communicate through the server socket
-tfi_server *tfi_start_server(int port, tfi_transport_protocol protocol, int tcp_max_connections) {
-	tfi_server *tfi = (tfi_server *)malloc(sizeof(tfi_server));
-	int rv;
-
-    // start WinSock
-    WSADATA wsa;
-    rv = WSAStartup(MAKEWORD(2, 0), &wsa);
-    if (rv != 0) {
-        printf("tfi_start_server(): WSAStartup(): Error code %d\n", rv);
-        free(tfi);
-        return NULL;
-    }
-
-    // create server socket
-    int type = (protocol == TFI_UDP) ? SOCK_DGRAM : SOCK_STREAM;
-    tfi->socket.s = socket(AF_INET, type, 0);
-    if (tfi->socket.s == INVALID_SOCKET) {
-        printf("tfi_start_server(): socket(): Error code %d\n", WSAGetLastError());
-        free(tfi);
-        WSACleanup();
-        return NULL;
-    }
-
-    // fill own address structure
-    memset(tfi->address.a.sin_zero, 0, 8);
-    tfi->address.a.sin_family = AF_INET;
-    tfi->address.a.sin_port = htons(port);
-    tfi->address.a.sin_addr.s_addr = INADDR_ANY;
-
-    // bind to address / port
-    rv = bind(tfi->socket.s, (SOCKADDR *)&tfi->address.a, sizeof(SOCKADDR));
-    if (rv == SOCKET_ERROR) {
-        printf("tfi_start_server(): bind(): Error code %d\n", WSAGetLastError());
-        tfi_close_server(tfi);
-        WSACleanup();
-        return NULL;
-    }
-
-    if (protocol == TFI_TCP) {
-        // listen with accept socket
-        rv = listen(tfi->socket.s, tcp_max_connections);
-        if (rv == SOCKET_ERROR) {
-            printf("tfi_start_server(): listen(): Error code %d\n", WSAGetLastError());
-            tfi_close_server(tfi);
-            WSACleanup();
-            return NULL;
-        }
-    }
-
-	return tfi;
-}
-
-// accept new tcp connection (blocking)
-// after this call, you can communicate through the client socket
-tfi_client *tfi_accept(tfi_server *server) {
-    tfi_client *tfi = (tfi_client *)malloc(sizeof(tfi_client));
-
-    // accept new connection and fill the corresponding address structure
-    int addrlen = sizeof(SOCKADDR);
-    tfi->socket.s = accept(server->socket.s, (SOCKADDR *)&tfi->address.a, &addrlen);
-    if (tfi->socket.s == INVALID_SOCKET) { // from accept
-        printf("tfi_accept(): accept(): Error code %d\n", WSAGetLastError());
-        free(tfi);
-        return NULL;
-    }	
-
-    return tfi;
-}
-
-// after this call, you can communicate through the client socket
-tfi_client *tfi_start_client(char *host, int port, tfi_transport_protocol protocol) {
-    tfi_client *tfi = (tfi_client *)malloc(sizeof(tfi_client));
-    int rv;
-
-    // start WinSock
-    WSADATA wsa;
-    rv = WSAStartup(MAKEWORD(2, 0), &wsa);
-    if (rv != 0) {
-        printf("tfi_start_client(): WSAStartup(): Error code %d\n", rv);
-        free(tfi);
-        return NULL;
-    }
-
-    // create socket
-    int type = (protocol == TFI_UDP) ? SOCK_DGRAM : SOCK_STREAM;
-    tfi->socket.s = socket(AF_INET, type, 0);
-    if (tfi->socket.s == INVALID_SOCKET) {
-        printf("tfi_start_client(): socket(): Error code %d\n", WSAGetLastError());
-        free(tfi);
-        WSACleanup();
-        return NULL;
-    }
-
-    // fill server address structure
-    memset(tfi->address.a.sin_zero, 0, 8);
-    tfi->address.a.sin_family = AF_INET;
-    tfi->address.a.sin_port = htons(port);
-    inet_pton(AF_INET, host, &tfi->address.a.sin_addr);
-
-    if (protocol == TFI_TCP) {
-        // connect to host
-        rv = connect(tfi->socket.s, (SOCKADDR *)&tfi->address.a, sizeof(SOCKADDR));
-        if (rv == SOCKET_ERROR) {
-            printf("tfi_start_client(): connect(): Error code %d\n", WSAGetLastError());
-            tfi_close_client(tfi);
-            WSACleanup();
-            return NULL;
-        }
-    }
-
-    return tfi;
-}
-
-
-
-
-// *** THREADS *** //
-
-// internal thread function
-DWORD WINAPI thread_function(void* data) {
-	tfi_client_thread *ct = (tfi_client_thread *)data;
-
-	ct->function(ct->param);
-
-	CloseHandle(ct->thread);
-    tfi_close_client(ct->param);
-    free(ct);
-	return 0;
-}
-
-// starts a new thread that calls 'function'
-// after completion of 'function', the client and the client thread are automatically closed
-tfi_client_thread *tfi_start_client_thread(tfi_client *client, void (*function)(tfi_client *)) {
-    tfi_client_thread *ct = (tfi_client_thread *)malloc(sizeof(tfi_client_thread));
-
-    ct->function = function;
-    ct->param = client;
-    ct->thread = CreateThread(NULL, 0, thread_function, ct, 0, NULL);
-
-    return ct;
-}
-
-void tfi_wait_for_client_thread(tfi_client_thread *ct) {
-    WaitForSingleObject(ct->thread, INFINITE);
-}
-
-// this is called automatically if the thread function completes
-// however, this can be used manually to terminate the thread
-void tfi_close_client_thread(tfi_client_thread *ct) {
-    TerminateThread(ct->thread, 1);
-
-    CloseHandle(ct->thread);
-    tfi_close_client(ct->param);
-    free(ct);
-}
-
-
-
-
-// *** SEND & RECEIVE *** //
-
-// tcp send entire message
-// returns the number of bytes sent (which should always be msglen) or -1 if an error occurred
-int tfi_send_all(tfi_socket socket, char *msg, int msglen) {
-    int rv;
-
-    int sent = 0;
-    while (sent < msglen) {
-        rv = send(socket.s, msg + sent, msglen - sent, 0);
-        if (rv == SOCKET_ERROR) {
-            printf("tfi_send_all(): send(): Error code %d\n", WSAGetLastError());
-            return -1;
-        }
-
-        sent += rv;
-    }
-
-    return sent;
-}
-
-// tcp receive entire message
-// returns the number of bytes received (which should always be msglen) or 0 if the connection was closed gracefully or -1 if an error occurred
-int tfi_recv_all(tfi_socket socket, char *buffer, int msglen) {
-    int rv;
-
-    int received = 0;
-    while (received < msglen) {
-        rv = recv(socket.s, buffer + received, msglen - received, 0);
-        if (rv == SOCKET_ERROR) {
-            printf("tfi_recv_all(): recv(): Error code %d\n", WSAGetLastError());
-            return -1;
-        }
-        if (rv == 0) {
-            return 0;
-        }
-
-        received += rv;
-    }
-
-    return received;
-}
-
-// udp send entire message
-// returns the number of bytes sent (which should always be msglen) or -1 if an error occurred
-int tfi_sendto_all(tfi_socket socket, tfi_address to_address, char *msg, int msglen) {
-    int rv;
-
-    int sent = 0;
-    while (sent < msglen) {
-        rv = sendto(socket.s, msg + sent, msglen - sent, 0, (SOCKADDR *)&to_address.a, sizeof(SOCKADDR));
-        if (rv == SOCKET_ERROR) {
-            printf("tfi_sendto_all(): sendto(): Error code %d\n", WSAGetLastError());
-            return -1;
-        }
-
-        sent += rv;
-    }
-
-    return sent;
-}
-
-// udp receive entire message
-// fills from_address
-// returns the number of bytes received (which should always be msglen) or 0 if the connection was closed gracefully or -1 if an error occurred
-int tfi_recvfrom_all(tfi_socket socket, tfi_address *from_address, char *buffer, int msglen) {
-    int rv;
-    int addrlen = sizeof(SOCKADDR);
-
-    int received = 0;
-    while (received < msglen) {
-        rv = recvfrom(socket.s, buffer + received, msglen - received, 0, (SOCKADDR *)&from_address->a, &addrlen);
-        if (rv == SOCKET_ERROR) {
-            printf("tfi_recvfrom_all(): recvfrom(): Error code %d\n", WSAGetLastError());
-            return -1;
-        }
-        if (rv == 0) {
-            return 0;
-        }
-
-        received += rv;
-    }
-
-    return received;
-}
-
 #else
-
-// ************* //
-// *** LINUX *** //
-// ************* //
-
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#endif
 
+
+// *** STRUCTS *** //
+
+
+typedef enum {
+    TFI_TCP, TFI_UDP
+} tfi_transport_protocol;
+
+#ifdef TFI_WINSOCK
+typedef struct {
+	SOCKET s;
+} tfi_socket;
+#else
 typedef struct {
 	int s;
 } tfi_socket;
+#endif
 
 typedef struct {
     struct sockaddr_in a;
@@ -331,31 +45,84 @@ typedef struct {
     tfi_address address;
 } tfi_server, tfi_client;
 
+#ifdef TFI_WINSOCK
+typedef struct {
+    HANDLE thread;
+	void (*function)(tfi_client *);
+	tfi_client *param;
+} tfi_client_thread;
+#else
 typedef struct {
     pthread_t thread;
 	void (*function)(tfi_client *);
 	tfi_client *param;
 } tfi_client_thread;
+#endif
 
 
+// *** CLEANUP & ERROR HANDLING *** //
 
-
-// *** SOCKETS *** //
 
 void tfi_close_server(tfi_server *tfi) {
-	close(tfi->socket.s);
+    #ifdef TFI_WINSOCK
+	closesocket(tfi->socket.s);
+    #else
+    close(tfi->socket.s);
+    #endif
+
 	free(tfi);
 }
 
-// does not need to be called only if the client is handled in a thread
+// do NOT call ONLY if the client is handled in a thread
 void tfi_close_client(tfi_client *tfi) {
-	close(tfi->socket.s);
+	#ifdef TFI_WINSOCK
+	closesocket(tfi->socket.s);
+    #else
+    close(tfi->socket.s);
+    #endif
+
 	free(tfi);
 }
 
 void tfi_cleanup() {
-    // Empty
+    #ifdef TFI_WINSOCK
+    WSACleanup();
+    #endif
 }
+
+int invalid_socket(tfi_socket socket, char *function) {
+    #ifdef TFI_WINSOCK
+    if (socket.s == INVALID_SOCKET) {
+        printf("%s: Error code %d\n", function, WSAGetLastError());
+    #else
+    if (socket.s < 0) {
+        printf("%s: Error code %d\n", function, errno);
+    #endif
+
+        return 1;
+    }
+
+    return 0;
+}
+
+int socket_error(int rv, char *function) {
+    #ifdef TFI_WINSOCK
+    if (rv == SOCKET_ERROR) {
+        printf("%s: Error code %d\n", function, WSAGetLastError());
+    #else
+    if (rv < 0) {
+        printf("%s: Error code %d\n", function, errno);
+    #endif
+
+        return 1;
+    }
+
+    return 0;
+}
+
+
+// *** SOCKETS *** //
+
 
 // protocol = TFI_TCP: after this call, you can call accept
 // protocol = TFI_UDP: after this call, you can communicate through the server socket
@@ -363,12 +130,23 @@ tfi_server *tfi_start_server(int port, tfi_transport_protocol protocol, int tcp_
 	tfi_server *tfi = (tfi_server *)malloc(sizeof(tfi_server));
 	int rv;
 
+    #ifdef TFI_WINSOCK
+    // start WinSock
+    WSADATA wsa;
+    rv = WSAStartup(MAKEWORD(2, 0), &wsa);
+    if (rv != 0) {
+        printf("tfi_start_server(): WSAStartup(): Error code %d\n", rv);
+        free(tfi);
+        return NULL;
+    }
+    #endif
+
     // create server socket
     int type = (protocol == TFI_UDP) ? SOCK_DGRAM : SOCK_STREAM;
     tfi->socket.s = socket(AF_INET, type, 0);
-    if (tfi->socket.s < 0) {
-        printf("tfi_start_server(): socket(): Error code %d\n", errno);
+    if (invalid_socket(tfi->socket, "tfi_start_server(): socket()")) {
         free(tfi);
+        tfi_cleanup();
         return NULL;
     }
 
@@ -380,18 +158,18 @@ tfi_server *tfi_start_server(int port, tfi_transport_protocol protocol, int tcp_
 
     // bind to address / port
     rv = bind(tfi->socket.s, (struct sockaddr *)&tfi->address.a, sizeof(struct sockaddr));
-    if (rv < 0) {
-        printf("tfi_start_server(): bind(): Error code %d\n", errno);
+    if (socket_error(rv, "tfi_start_server(): bind()")) {
         tfi_close_server(tfi);
+        tfi_cleanup();
         return NULL;
     }
 
-    if (protocol == TFI_TCP) { // tcp
+    if (protocol == TFI_TCP) {
         // listen with accept socket
         rv = listen(tfi->socket.s, tcp_max_connections);
-        if (rv < 0) {
-            printf("tfi_start_server(): listen(): Error code %d\n", errno);
+        if (socket_error(rv, "tfi_start_server(): listen()")) {
             tfi_close_server(tfi);
+            tfi_cleanup();
             return NULL;
         }
     }
@@ -405,13 +183,17 @@ tfi_client *tfi_accept(tfi_server *server) {
     tfi_client *tfi = (tfi_client *)malloc(sizeof(tfi_client));
 
     // accept new connection and fill the corresponding address structure
+    #ifdef TFI_WINSOCK
+    int addrlen = sizeof(struct sockaddr);
+    #else
     socklen_t addrlen = sizeof(struct sockaddr);
+    #endif
+
     tfi->socket.s = accept(server->socket.s, (struct sockaddr *)&tfi->address.a, &addrlen);
-    if (tfi->socket.s < 0) {
-        printf("tfi_accept(): accept(): Error code %d\n", errno);
+    if (invalid_socket(tfi->socket, "tfi_accept(): accept()")) {
         free(tfi);
         return NULL;
-    }	
+    }
 
     return tfi;
 }
@@ -421,27 +203,38 @@ tfi_client *tfi_start_client(char *host, int port, tfi_transport_protocol protoc
     tfi_client *tfi = (tfi_client *)malloc(sizeof(tfi_client));
     int rv;
 
+    #ifdef TFI_WINSOCK
+    // start WinSock
+    WSADATA wsa;
+    rv = WSAStartup(MAKEWORD(2, 0), &wsa);
+    if (rv != 0) {
+        printf("tfi_start_client(): WSAStartup(): Error code %d\n", rv);
+        free(tfi);
+        return NULL;
+    }
+    #endif
+
     // create socket
     int type = (protocol == TFI_UDP) ? SOCK_DGRAM : SOCK_STREAM;
     tfi->socket.s = socket(AF_INET, type, 0);
-    if (tfi->socket.s < 0) {
-        printf("tfi_start_client(): socket(): Error code %d\n", errno);
+    if (invalid_socket(tfi->socket, "tfi_start_client(): socket()")) {
         free(tfi);
+        tfi_cleanup();
         return NULL;
     }
 
     // fill server address structure
     memset(tfi->address.a.sin_zero, 0, 8);
-	tfi->address.a.sin_family = AF_INET;
-	tfi->address.a.sin_port = htons(port);
+    tfi->address.a.sin_family = AF_INET;
+    tfi->address.a.sin_port = htons(port);
     inet_pton(AF_INET, host, &tfi->address.a.sin_addr);
 
     if (protocol == TFI_TCP) {
         // connect to host
         rv = connect(tfi->socket.s, (struct sockaddr *)&tfi->address.a, sizeof(struct sockaddr));
-        if (rv < 0) {
-            printf("tfi_start_client(): connect(): Error code %d\n", errno);
+        if (socket_error(rv, "tfi_start_client(): connect()")) {
             tfi_close_client(tfi);
+            tfi_cleanup();
             return NULL;
         }
     }
@@ -450,11 +243,22 @@ tfi_client *tfi_start_client(char *host, int port, tfi_transport_protocol protoc
 }
 
 
-
-
 // *** THREADS *** //
 
+
 // internal thread function
+#ifdef TFI_WINSOCK
+DWORD WINAPI thread_function(void* data) {
+	tfi_client_thread *ct = (tfi_client_thread *)data;
+
+	ct->function(ct->param);
+
+	CloseHandle(ct->thread);
+    tfi_close_client(ct->param);
+    free(ct);
+	return 0;
+}
+#else
 void *thread_function(void *data) {
 	tfi_client_thread *ct = (tfi_client_thread *)data;
 
@@ -464,6 +268,7 @@ void *thread_function(void *data) {
     free(ct);
 	return 0;
 }
+#endif
 
 // starts a new thread that calls 'function'
 // after completion of 'function', the client and the client thread are automatically closed
@@ -472,33 +277,51 @@ tfi_client_thread *tfi_start_client_thread(tfi_client *client, void (*function)(
 
     ct->function = function;
     ct->param = client;
+
+    #ifdef TFI_WINSOCK
+    ct->thread = CreateThread(NULL, 0, thread_function, ct, 0, NULL);
+    if (ct->thread == NULL) {
+        printf("tfi_start_client_thread(): CreateThread(): Error code %d\n", GetLastError());
+        free(ct);
+        return NULL;
+    }
+    #else
     int rv = pthread_create(&ct->thread, NULL, thread_function, ct);
     if (rv != 0) {
         printf("tfi_start_client_thread(): pthread_create(): Error code %d\n", rv);
         free(ct);
         return NULL;
     }
+    #endif
 
     return ct;
 }
 
 void tfi_wait_for_client_thread(tfi_client_thread *ct) {
+    #ifdef TFI_WINSOCK
+    WaitForSingleObject(ct->thread, INFINITE);
+    #else
     pthread_join(ct->thread, NULL);
+    #endif
 }
 
 // this is called automatically if the thread function completes
 // however, this can be used manually to terminate the thread
 void tfi_close_client_thread(tfi_client_thread *ct) {
+    #ifdef TFI_WINSOCK
+    TerminateThread(ct->thread, 1);
+    CloseHandle(ct->thread);
+    #else
     pthread_cancel(ct->thread);
+    #endif
 
     tfi_close_client(ct->param);
     free(ct);
 }
 
 
-
-
 // *** SEND & RECEIVE *** //
+
 
 // tcp send entire message
 // returns the number of bytes sent (which should always be msglen) or -1 if an error occurred
@@ -508,8 +331,7 @@ int tfi_send_all(tfi_socket socket, char *msg, int msglen) {
     int sent = 0;
     while (sent < msglen) {
         rv = send(socket.s, msg + sent, msglen - sent, 0);
-        if (rv < 0) {
-            printf("tfi_send_all(): send(): Error code %d\n", errno);
+        if (socket_error(rv, "tfi_send_all(): send()")) {
             return -1;
         }
 
@@ -527,8 +349,7 @@ int tfi_recv_all(tfi_socket socket, char *buffer, int msglen) {
     int received = 0;
     while (received < msglen) {
         rv = recv(socket.s, buffer + received, msglen - received, 0);
-        if (rv < 0) {
-            printf("tfi_recv_all(): recv(): Error code %d\n", errno);
+        if (socket_error(rv, "tfi_recv_all(): recv()")) {
             return -1;
         }
         if (rv == 0) {
@@ -549,8 +370,7 @@ int tfi_sendto_all(tfi_socket socket, tfi_address to_address, char *msg, int msg
     int sent = 0;
     while (sent < msglen) {
         rv = sendto(socket.s, msg + sent, msglen - sent, 0, (struct sockaddr *)&to_address.a, sizeof(struct sockaddr));
-        if (rv < 0) {
-            printf("tfi_sendto_all(): sendto(): Error code %d\n", errno);
+        if (socket_error(rv, "tfi_sendto_all(): sendto()")) {
             return -1;
         }
 
@@ -561,17 +381,21 @@ int tfi_sendto_all(tfi_socket socket, tfi_address to_address, char *msg, int msg
 }
 
 // udp receive entire message
-// fills addr
+// fills from_address
 // returns the number of bytes received (which should always be msglen) or 0 if the connection was closed gracefully or -1 if an error occurred
 int tfi_recvfrom_all(tfi_socket socket, tfi_address *from_address, char *buffer, int msglen) {
     int rv;
+
+    #ifdef TFI_WINSOCK
+    int addrlen = sizeof(struct sockaddr);
+    #else
     socklen_t addrlen = sizeof(struct sockaddr);
+    #endif
 
     int received = 0;
     while (received < msglen) {
         rv = recvfrom(socket.s, buffer + received, msglen - received, 0, (struct sockaddr *)&from_address->a, &addrlen);
-        if (rv < 0) {
-            printf("tfi_recvfrom_all(): recvfrom(): Error code %d\n", errno);
+        if (socket_error(rv, "tfi_recvfrom_all(): recvfrom()")) {
             return -1;
         }
         if (rv == 0) {
@@ -583,7 +407,5 @@ int tfi_recvfrom_all(tfi_socket socket, tfi_address *from_address, char *buffer,
 
     return received;
 }
-
-#endif
 
 #endif
