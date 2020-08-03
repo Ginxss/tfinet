@@ -1,4 +1,4 @@
-#define TFI_WINSOCK
+// #define TFI_WINSOCK
 #include "../tfinet.h"
 
 int main(int argc, char *argv[]) {

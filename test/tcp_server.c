@@ -1,4 +1,4 @@
-#define TFI_WINSOCK
+// #define TFI_WINSOCK
 #include "../tfinet.h"
 
 void connection_func(tfi_client *client) {
