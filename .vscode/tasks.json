@@ -15,7 +15,7 @@
                 "args": [
                     "examples/tcp_server.c",
 
-                    "-Wall", "-lpthread",
+                    "-Wall", "-lpthread", "-g",
                     "-o", "build/server.out"
                 ],
                 "problemMatcher": "$gcc"
@@ -47,7 +47,7 @@
                 "args": [
                     "examples/tcp_client.c",
 
-                    "-Wall", "-lpthread",
+                    "-Wall", "-lpthread", "-g",
                     "-o", "build/client.out"
                 ],
                 "problemMatcher": "$gcc"
