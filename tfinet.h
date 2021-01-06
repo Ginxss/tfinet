@@ -21,6 +21,9 @@
 
 // *** STRUCTS *** //
 
+typedef enum {
+	TFI_IPv4, TFI_IPv6
+} tfi_ip_version;
 
 typedef enum {
 	TFI_TCP, TFI_UDP
@@ -37,7 +40,8 @@ typedef struct {
 #endif
 
 typedef struct {
-	struct sockaddr_in a;
+	struct sockaddr_storage a;
+	socklen_t length;
 } tfi_address;
 
 typedef struct {
@@ -126,7 +130,7 @@ int socket_error(int rv, char *function) {
 
 // protocol = TFI_TCP: after this call, you can call accept
 // protocol = TFI_UDP: after this call, you can communicate through the server socket
-tfi_server *tfi_start_server(short port, tfi_transport_protocol protocol, int tcp_max_connections) {
+tfi_server *tfi_start_server(short port, tfi_transport_protocol protocol, tfi_ip_version version, int tcp_max_connections) {
 	tfi_server *tfi = (tfi_server *)malloc(sizeof(tfi_server));
 	int rv;
 
@@ -142,8 +146,9 @@ tfi_server *tfi_start_server(short port, tfi_transport_protocol protocol, int tc
 	#endif
 
 	// create server socket
+	int af = (version == TFI_IPv6) ? AF_INET6 : AF_INET;
 	int type = (protocol == TFI_UDP) ? SOCK_DGRAM : SOCK_STREAM;
-	tfi->socket.s = socket(AF_INET, type, 0);
+	tfi->socket.s = socket(af, type, 0);
 	if (invalid_socket(tfi->socket, "tfi_start_server(): socket()")) {
 		free(tfi);
 		tfi_cleanup();
@@ -151,13 +156,30 @@ tfi_server *tfi_start_server(short port, tfi_transport_protocol protocol, int tc
 	}
 
 	// fill own address structure
-	memset(tfi->address.a.sin_zero, 0, 8);
-	tfi->address.a.sin_family = AF_INET;
-	tfi->address.a.sin_port = htons(port);
-	tfi->address.a.sin_addr.s_addr = INADDR_ANY;
+	memset(&tfi->address.a, 0, sizeof(tfi->address.a));
+	if (version == TFI_IPv6) {
+		struct sockaddr_in6 addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin6_family = AF_INET6;
+		addr.sin6_port = htons(port);
+		addr.sin6_addr = in6addr_any;
+
+		memcpy(&tfi->address.a, &addr, sizeof(addr));
+		tfi->address.length = sizeof(addr);
+	}
+	else { // TFI_IPv4
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(port);
+		addr.sin_addr.s_addr = INADDR_ANY;
+
+		memcpy(&tfi->address.a, &addr, sizeof(addr));
+		tfi->address.length = sizeof(addr);
+	}
 
 	// bind to address / port
-	rv = bind(tfi->socket.s, (struct sockaddr *)&tfi->address.a, sizeof(struct sockaddr));
+	rv = bind(tfi->socket.s, (struct sockaddr *)&tfi->address.a, tfi->address.length);
 	if (socket_error(rv, "tfi_start_server(): bind()")) {
 		tfi_close_server(tfi);
 		tfi_cleanup();
@@ -181,15 +203,9 @@ tfi_server *tfi_start_server(short port, tfi_transport_protocol protocol, int tc
 // after this call, you can communicate through the client socket
 tfi_client *tfi_accept(tfi_server *server) {
 	tfi_client *tfi = (tfi_client *)malloc(sizeof(tfi_client));
+	tfi->address.length = server->address.length;
 
-	// accept new connection and fill the corresponding address structure
-	#ifdef TFI_WINSOCK
-	int addrlen = sizeof(struct sockaddr);
-	#else
-	socklen_t addrlen = sizeof(struct sockaddr);
-	#endif
-
-	tfi->socket.s = accept(server->socket.s, (struct sockaddr *)&tfi->address.a, &addrlen);
+	tfi->socket.s = accept(server->socket.s, (struct sockaddr *)&tfi->address.a, &tfi->address.length);
 	if (invalid_socket(tfi->socket, "tfi_accept(): accept()")) {
 		free(tfi);
 		return NULL;
@@ -199,7 +215,7 @@ tfi_client *tfi_accept(tfi_server *server) {
 }
 
 // after this call, you can communicate through the client socket
-tfi_client *tfi_start_client(char *host, short port, tfi_transport_protocol protocol) {
+tfi_client *tfi_start_client(char *host, short port, tfi_transport_protocol protocol, tfi_ip_version version) {
 	tfi_client *tfi = (tfi_client *)malloc(sizeof(tfi_client));
 	int rv;
 
@@ -215,23 +231,41 @@ tfi_client *tfi_start_client(char *host, short port, tfi_transport_protocol prot
 	#endif
 
 	// create socket
+	int af = (version == TFI_IPv6) ? AF_INET6 : AF_INET;
 	int type = (protocol == TFI_UDP) ? SOCK_DGRAM : SOCK_STREAM;
-	tfi->socket.s = socket(AF_INET, type, 0);
-	if (invalid_socket(tfi->socket, "tfi_start_client(): socket()")) {
+	tfi->socket.s = socket(af, type, 0);
+	if (invalid_socket(tfi->socket, "tfi_start_server(): socket()")) {
 		free(tfi);
 		tfi_cleanup();
 		return NULL;
 	}
 
 	// fill server address structure
-	memset(tfi->address.a.sin_zero, 0, 8);
-	tfi->address.a.sin_family = AF_INET;
-	tfi->address.a.sin_port = htons(port);
-	inet_pton(AF_INET, host, &tfi->address.a.sin_addr);
+	memset(&tfi->address.a, 0, sizeof(tfi->address.a));
+	if (version == TFI_IPv6) {
+		struct sockaddr_in6 addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin6_family = AF_INET6;
+		addr.sin6_port = htons(port);
+		inet_pton(AF_INET6, host, &addr.sin6_addr);
+
+		memcpy(&tfi->address.a, &addr, sizeof(addr));
+		tfi->address.length = sizeof(addr);
+	}
+	else { // TFI_IPv4
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(port);
+		inet_pton(AF_INET, host, &addr.sin_addr);
+
+		memcpy(&tfi->address.a, &addr, sizeof(addr));
+		tfi->address.length = sizeof(addr);
+	}
 
 	if (protocol == TFI_TCP) {
 		// connect to host
-		rv = connect(tfi->socket.s, (struct sockaddr *)&tfi->address.a, sizeof(struct sockaddr));
+		rv = connect(tfi->socket.s, (struct sockaddr *)&tfi->address.a, tfi->address.length);
 		if (socket_error(rv, "tfi_start_client(): connect()")) {
 			tfi_close_client(tfi);
 			tfi_cleanup();
@@ -386,7 +420,7 @@ int tfi_recv_all(tfi_socket socket, char *buffer, int msglen) {
 // udp send message
 // returns the number of bytes sent or -1 if an error occurred
 int tfi_sendto(tfi_socket socket, tfi_address to_address, char *msg, int msglen) {
-	int sent = sendto(socket.s, msg, msglen, 0, (struct sockaddr *)&to_address.a, sizeof(struct sockaddr));
+	int sent = sendto(socket.s, msg, msglen, 0, (struct sockaddr *)&to_address.a, to_address.length);
 	if (socket_error(sent, "tfi_sendto_all(): sendto()")) {
 		return -1;
 	}
@@ -394,15 +428,11 @@ int tfi_sendto(tfi_socket socket, tfi_address to_address, char *msg, int msglen)
 	return sent;
 }
 
-// udp receive message and fill 'from' with client address
+// udp receive message and fill 'from'->a with client address
+// must contain the correct address length beforehand (sizeof(sockaddr_in) or sizeof(sockaddr_in6))
 // returns the number of bytes received or 0 if the connection was closed gracefully or -1 if an error occurred
 int tfi_recvfrom(tfi_socket socket, tfi_address *from, char *buffer, int msglen) {
-	#ifdef TFI_WINSOCK
-	int addrlen = sizeof(struct sockaddr);
-	#else
-	socklen_t addrlen = sizeof(struct sockaddr);
-	#endif
-
+	socklen_t addrlen = from->length;
 	int received = recvfrom(socket.s, buffer, msglen, 0, (struct sockaddr *)&from->a, &addrlen);
 	if (socket_error(received, "tfi_recvfrom(): recvfrom()")) {
 		return -1;
