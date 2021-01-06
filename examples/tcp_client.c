@@ -7,7 +7,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	tfi_client *client = tfi_start_client(argv[1], atoi(argv[2]), TFI_TCP);
+	tfi_client *client = tfi_start_client(argv[1], (short)atoi(argv[2]), TFI_TCP);
 
 	char buffer[9];
 	buffer[8] = 0;
