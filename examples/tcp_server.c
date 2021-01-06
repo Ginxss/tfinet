@@ -1,12 +1,17 @@
-#define TFI_WINSOCK
+// #define TFI_WINSOCK
 #include "../tfinet.h"
 
 void connection_func(tfi_client *client) {
-	tfi_send_all(client->socket, "Welcome!", 8);
+	if (tfi_send_all(client->socket, "Welcome!", 8) < 0) {
+		return;
+	}
+	printf("Sent: %s\n", "Welcome!");
 	
 	char buffer[8];
 	buffer[7] = 0;
-	tfi_recv_all(client->socket, buffer, 7);
+	if (tfi_recv_all(client->socket, buffer, 7) < 0) {
+		return;
+	}
 	printf("Received: %s\n", buffer);
 }
 

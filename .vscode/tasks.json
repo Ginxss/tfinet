@@ -13,24 +13,24 @@
             "linux": {
                 "command": "gcc",
                 "args": [
-                    "test/tcp_server.c",
+                    "examples/udp_server.c",
 
                     "-Wall", "-lpthread",
-                    "-o", "test/server.out"
+                    "-o", "examples/server.out"
                 ],
                 "problemMatcher": "$gcc"
             },
             "windows": {
                 "command": "cl",
                 "args": [
-                    "test/udp_server.c",
+                    "examples/udp_server.c",
 
                     "/nologo", "/W3", "/Zi",
-                    "/Fo:test/", "/Fd:test/",
+                    "/Fo:examples/", "/Fd:examples/",
 
                     "/link",
                     "WS2_32.lib",
-                    "/out:test/server.exe"
+                    "/out:examples/server.exe"
                 ],
                 "problemMatcher": "$msCompile"
             }
@@ -45,24 +45,24 @@
             "linux": {
                 "command": "gcc",
                 "args": [
-                    "test/tcp_client.c",
+                    "examples/udp_client.c",
 
                     "-Wall", "-lpthread",
-                    "-o", "test/client.out"
+                    "-o", "examples/client.out"
                 ],
                 "problemMatcher": "$gcc"
             },
             "windows": {
                 "command": "cl",
                 "args": [
-                    "test/udp_client.c",
+                    "examples/udp_client.c",
 
                     "/nologo", "/W3", "/Zi",
-                    "/Fo:test/", "/Fd:test/",
+                    "/Fo:examples/", "/Fd:examples/",
 
                     "/link",
                     "WS2_32.lib",
-                    "/out:test/client.exe"
+                    "/out:examples/client.exe"
                 ],
                 "problemMatcher": "$msCompile"
             }
