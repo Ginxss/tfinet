@@ -13,24 +13,24 @@
             "linux": {
                 "command": "gcc",
                 "args": [
-                    "examples/udp_server.c",
+                    "examples/tcp_server.c",
 
                     "-Wall", "-lpthread",
-                    "-o", "examples/server.out"
+                    "-o", "build/server.out"
                 ],
                 "problemMatcher": "$gcc"
             },
             "windows": {
                 "command": "cl",
                 "args": [
-                    "examples/udp_server.c",
+                    "examples/tcp_server.c",
 
-                    "/nologo", "/W3", "/Zi",
-                    "/Fo:examples/", "/Fd:examples/",
+                    "/nologo", "/W4", "/Zi",
+                    "/Fo:build/", "/Fd:build/",
 
                     "/link",
                     "WS2_32.lib",
-                    "/out:examples/server.exe"
+                    "/out:build/server.exe"
                 ],
                 "problemMatcher": "$msCompile"
             }
@@ -45,24 +45,24 @@
             "linux": {
                 "command": "gcc",
                 "args": [
-                    "examples/udp_client.c",
+                    "examples/tcp_client.c",
 
                     "-Wall", "-lpthread",
-                    "-o", "examples/client.out"
+                    "-o", "build/client.out"
                 ],
                 "problemMatcher": "$gcc"
             },
             "windows": {
                 "command": "cl",
                 "args": [
-                    "examples/udp_client.c",
+                    "examples/tcp_client.c",
 
-                    "/nologo", "/W3", "/Zi",
-                    "/Fo:examples/", "/Fd:examples/",
+                    "/nologo", "/W4", "/Zi",
+                    "/Fo:build/", "/Fd:build/",
 
                     "/link",
                     "WS2_32.lib",
-                    "/out:examples/client.exe"
+                    "/out:build/client.exe"
                 ],
                 "problemMatcher": "$msCompile"
             }

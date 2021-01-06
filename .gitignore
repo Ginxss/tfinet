@@ -1,5 +1,1 @@
-*.ilk
-*.pdb
-*.obj
-*.exe
-*.out
+build/

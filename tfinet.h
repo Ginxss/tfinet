@@ -126,7 +126,7 @@ int socket_error(int rv, char *function) {
 
 // protocol = TFI_TCP: after this call, you can call accept
 // protocol = TFI_UDP: after this call, you can communicate through the server socket
-tfi_server *tfi_start_server(int port, tfi_transport_protocol protocol, int tcp_max_connections) {
+tfi_server *tfi_start_server(short port, tfi_transport_protocol protocol, int tcp_max_connections) {
 	tfi_server *tfi = (tfi_server *)malloc(sizeof(tfi_server));
 	int rv;
 
@@ -199,7 +199,7 @@ tfi_client *tfi_accept(tfi_server *server) {
 }
 
 // after this call, you can communicate through the client socket
-tfi_client *tfi_start_client(char *host, int port, tfi_transport_protocol protocol) {
+tfi_client *tfi_start_client(char *host, short port, tfi_transport_protocol protocol) {
 	tfi_client *tfi = (tfi_client *)malloc(sizeof(tfi_client));
 	int rv;
 
@@ -306,7 +306,7 @@ void tfi_wait_for_client_thread(tfi_client_thread *ct) {
 }
 
 // this is called automatically when the thread function completes
-// can also be used to manually terminate the thread
+// can also be used to manually terminate the thread and close the client
 void tfi_close_client_thread(tfi_client_thread *ct) {
 	#ifdef TFI_WINSOCK
 	TerminateThread(ct->thread, 1);
@@ -322,6 +322,27 @@ void tfi_close_client_thread(tfi_client_thread *ct) {
 
 // *** SEND & RECEIVE *** //
 
+// tcp send message
+// returns the number of bytes sent or -1 if an error occurred
+int tfi_send(tfi_socket socket, char *msg, int msglen) {
+	int sent = send(socket.s, msg, msglen, 0);
+	if (socket_error(sent, "tfi_send(): send()")) {
+		return -1;
+	}
+
+	return sent;
+}
+
+// tcp receive message
+// returns the number of bytes received or -1 if an error occurred
+int tfi_recv(tfi_socket socket, char *buffer, int msglen) {
+	int received = recv(socket.s, buffer, msglen, 0);
+	if (socket_error(received, "tfi_recv(): recv()")) {
+		return -1;
+	}
+
+	return received;
+}
 
 // tcp send entire message
 // returns the number of bytes sent (which should always be msglen) or -1 if an error occurred
@@ -362,47 +383,29 @@ int tfi_recv_all(tfi_socket socket, char *buffer, int msglen) {
 	return received;
 }
 
-// udp send entire message
-// returns the number of bytes sent (which should always be msglen) or -1 if an error occurred
-int tfi_sendto_all(tfi_socket socket, tfi_address to_address, char *msg, int msglen) {
-	int rv;
-
-	int sent = 0;
-	while (sent < msglen) {
-		rv = sendto(socket.s, msg + sent, msglen - sent, 0, (struct sockaddr *)&to_address.a, sizeof(struct sockaddr));
-		if (socket_error(rv, "tfi_sendto_all(): sendto()")) {
-			return -1;
-		}
-
-		sent += rv;
+// udp send message
+// returns the number of bytes sent or -1 if an error occurred
+int tfi_sendto(tfi_socket socket, tfi_address to_address, char *msg, int msglen) {
+	int sent = sendto(socket.s, msg, msglen, 0, (struct sockaddr *)&to_address.a, sizeof(struct sockaddr));
+	if (socket_error(sent, "tfi_sendto_all(): sendto()")) {
+		return -1;
 	}
 
 	return sent;
 }
 
-// udp receive entire message
-// fills 'from_address'
-// returns the number of bytes received (which should always be msglen) or 0 if the connection was closed gracefully or -1 if an error occurred
-int tfi_recvfrom_all(tfi_socket socket, tfi_address *from_address, char *buffer, int msglen) {
-	int rv;
-
+// udp receive message and fill 'from' with client address
+// returns the number of bytes received or 0 if the connection was closed gracefully or -1 if an error occurred
+int tfi_recvfrom(tfi_socket socket, tfi_address *from, char *buffer, int msglen) {
 	#ifdef TFI_WINSOCK
 	int addrlen = sizeof(struct sockaddr);
 	#else
 	socklen_t addrlen = sizeof(struct sockaddr);
 	#endif
 
-	int received = 0;
-	while (received < msglen) {
-		rv = recvfrom(socket.s, buffer + received, msglen - received, 0, (struct sockaddr *)&from_address->a, &addrlen);
-		if (socket_error(rv, "tfi_recvfrom_all(): recvfrom()")) {
-			return -1;
-		}
-		if (rv == 0) {
-			return 0;
-		}
-
-		received += rv;
+	int received = recvfrom(socket.s, buffer, msglen, 0, (struct sockaddr *)&from->a, &addrlen);
+	if (socket_error(received, "tfi_recvfrom(): recvfrom()")) {
+		return -1;
 	}
 
 	return received;
