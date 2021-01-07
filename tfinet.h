@@ -66,7 +66,6 @@ typedef struct {
 
 // *** CLEANUP & ERROR HANDLING *** //
 
-
 void tfi_close_server(tfi_server *tfi) {
 	#ifdef TFI_WINSOCK
 	closesocket(tfi->socket.s);
@@ -126,7 +125,6 @@ int socket_error(int rv, char *function) {
 
 
 // *** SOCKETS *** //
-
 
 // protocol = TFI_TCP: after this call, you can call accept
 // protocol = TFI_UDP: after this call, you can communicate through the server socket
@@ -279,7 +277,6 @@ tfi_client *tfi_start_client(char *host, short port, tfi_transport_protocol prot
 
 // *** THREADS *** //
 
-
 // internal thread function
 #ifdef TFI_WINSOCK
 DWORD WINAPI thread_function(void* data) {
@@ -418,6 +415,7 @@ int tfi_recv_all(tfi_socket socket, char *buffer, int msglen) {
 }
 
 // udp send message
+// to_address must have the correct length (sizeof(sockaddr_in) or sizeof(sockaddr_in6))
 // returns the number of bytes sent or -1 if an error occurred
 int tfi_sendto(tfi_socket socket, tfi_address to_address, char *msg, int msglen) {
 	int sent = sendto(socket.s, msg, msglen, 0, (struct sockaddr *)&to_address.a, to_address.length);
@@ -429,16 +427,48 @@ int tfi_sendto(tfi_socket socket, tfi_address to_address, char *msg, int msglen)
 }
 
 // udp receive message and fill 'from'->a with client address
-// must contain the correct address length beforehand (sizeof(sockaddr_in) or sizeof(sockaddr_in6))
+// 'from_address' can be NULL, but if it exists, it must have the correct length beforehand (sizeof(sockaddr_in) or sizeof(sockaddr_in6))
 // returns the number of bytes received or 0 if the connection was closed gracefully or -1 if an error occurred
-int tfi_recvfrom(tfi_socket socket, tfi_address *from, char *buffer, int msglen) {
-	socklen_t addrlen = from->length;
-	int received = recvfrom(socket.s, buffer, msglen, 0, (struct sockaddr *)&from->a, &addrlen);
+int tfi_recvfrom(tfi_socket socket, tfi_address *from_address, char *buffer, int msglen) {
+	struct sockaddr *from = NULL;
+	socklen_t *fromlen = NULL;
+
+	if (from_address) {
+		from = (struct sockaddr *)&from_address->a;
+		fromlen = &from_address->length;
+	}
+
+	int received = recvfrom(socket.s, buffer, msglen, 0, from, fromlen);
 	if (socket_error(received, "tfi_recvfrom(): recvfrom()")) {
 		return -1;
 	}
 
 	return received;
+}
+
+// returns a tfi_address with the correct length and address family set (may be used to prep for tfi_recvfrom)
+tfi_address tfi_init_address(tfi_ip_version version) {
+	tfi_address result;
+
+	memset(&result.a, 0, sizeof(result.a));
+	if (version == TFI_IPv6) {
+		struct sockaddr_in6 addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin6_family = AF_INET6;
+
+		memcpy(&result.a, &addr, sizeof(addr));
+		result.length = sizeof(addr);
+	}
+	else { // TFI_IPv4
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+
+		memcpy(&result.a, &addr, sizeof(addr));
+		result.length = sizeof(addr);
+	}
+
+	return result;
 }
 
 #endif

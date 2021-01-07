@@ -14,11 +14,9 @@ int main(int argc, char *argv[]) {
 	}
 	printf("Sent: %s\n", "SYN");
 
-	tfi_address address;
-	address.length = sizeof(struct sockaddr_in6);
 	char buffer[4];
 	buffer[3] = 0;
-	if (tfi_recvfrom(client->socket, &address, buffer, 3) < 0) {
+	if (tfi_recvfrom(client->socket, NULL, buffer, 3) < 0) {
 		return 1;
 	}
 	printf("Received: %s\n", buffer);
